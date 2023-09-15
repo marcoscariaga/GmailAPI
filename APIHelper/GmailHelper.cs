@@ -4,6 +4,7 @@ using Google.Apis.Gmail.v1.Data;
 using Google.Apis.Services;
 using Google.Apis.Util.Store;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Configuration;
 using System.IO;
@@ -68,12 +69,94 @@ namespace GmailAPI.APIHelper
                         string attId = part.Body.AttachmentId;
                         MessagePartBody attachPart = gService.Users.Messages.Attachments.Get(userId, messageId, attId).Execute();
 
-                        byte[] data = Base64ToByte(attachPart.Data);
+                        byte[] data = Convert.FromBase64String(attachPart.Data); //Base64ToByte(attachPart.Data);
                         File.WriteAllBytes(Path.Combine(outputDir, part.Filename), data);
                         fileName.Add(part.Filename);
                     }
                 }
+                return fileName;
             }
+            catch (Exception ex)
+            {
+                throw new Exception("Error: " + ex.Message);
+            }
+        }
+
+        public static string MsgNestedParts(IList<MessagePart> parts)
+        {
+            string str = string.Empty;
+            if (parts.Count() < 0)
+            {
+                return string.Empty;
+            }
+            else
+            {
+                IList<MessagePart> plainTestMail = parts.Where(x => x.MimeType == "text/plain").ToList();
+                IList<MessagePart> attachmentMail = parts.Where(x => x.MimeType == "multipart/alternative").ToList();
+
+                if (plainTestMail.Count() > 0)
+                {
+                    foreach (MessagePart eachPart in plainTestMail)
+                    {
+                        if (eachPart.Parts == null)
+                        {
+                            if (eachPart.Body != null && eachPart.Body.Data != null)
+                            {
+                                str += eachPart.Body.Data;
+                            }
+                        }
+                        else
+                        {
+                            return MsgNestedParts(eachPart.Parts);
+                        }
+                    }
+                }
+
+                if (attachmentMail.Count() > 0)
+                {
+                    foreach (MessagePart eachPart in attachmentMail)
+                    {
+                        if (eachPart.Parts == null)
+                        {
+                            if (eachPart.Body != null && eachPart.Body.Data != null)
+                            {
+                                str += eachPart.Body.Data;
+                            }
+                        }
+                        else
+                        {
+                            return MsgNestedParts(eachPart.Parts);
+                        }
+                    }
+                }
+
+                return str;
+            }
+        }
+
+        public static string Base64Decode(string base64Test)
+        {
+            string encodeText = string.Empty;
+
+            //STEP-1: Replace all special character od base64Test
+            encodeText = base64Test.Replace("-", "+");
+            encodeText = base64Test.Replace("_", "/");
+            encodeText = base64Test.Replace(" ", "+");
+            encodeText = base64Test.Replace("=", "+");
+
+            //STEP-2: Fixed invalid length of base64Test
+            if (encodeText.Length % 4 > 0) { encodeText += new string('=', 4 - encodeText.Length % 4); }
+            else if (encodeText.Length % 4 == 0)
+            {
+                encodeText = encodeText.Substring(0, encodeText.Length - 1);
+                if (encodeText.Length % 4 > 0) { encodeText += new string('+', 4 - encodeText.Length % 4); }
+            }
+
+            //STEP-3: Convert to Byte array
+            byte[] byteArray = Convert.FromBase64String(encodeText);
+
+            //STEP-4: Encoding to UTF-8 format
+            return Encoding.UTF8.GetString(byteArray);
         }
     }
 }
