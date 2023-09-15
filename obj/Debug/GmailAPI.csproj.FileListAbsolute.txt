@@ -1,0 +1,2 @@
+C:\Projetos\GmailAPI\obj\Debug\GmailAPI.csproj.AssemblyReference.cache
+C:\Projetos\GmailAPI\obj\Debug\GmailAPI.csproj.CoreCompileInputs.cache
