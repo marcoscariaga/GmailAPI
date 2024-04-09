@@ -5,10 +5,6 @@ using Google.Apis.Gmail.v1.Data;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace GmailAPI
 {
@@ -18,126 +14,147 @@ namespace GmailAPI
         {
             try
             {
-                List<Gmail> MailLists = GetAllEmails(Convert.ToString(ConfigurationManager.AppSettings["HostAddress"]));
+                List<Gmail> mailLists = GetAllEmailsAndSaveToDB(Convert.ToString(ConfigurationManager.AppSettings["HostAddress"]));
+                Console.ReadLine();
             }
             catch (Exception ex)
             {
-                Console.WriteLine("Error: " + ex);
+                Console.WriteLine(ex.Message);
             }
         }
 
-        public static List<Gmail> GetAllEmails(string HostEmailAddress)
+        public static List<Gmail> GetAllEmailsAndSaveToDB(string HostEmailAddress)
         {
+            List<Gmail> emailList = new List<Gmail>();
+
             try
             {
                 GmailService gmailService = GmailHelper.GetService();
-                List<Gmail> emailList = new List<Gmail>();
                 UsersResource.MessagesResource.ListRequest listRequest = gmailService.Users.Messages.List(HostEmailAddress);
                 listRequest.LabelIds = "INBOX";
                 listRequest.IncludeSpamTrash = false;
-                //listRequest.Q = "is:unread"; //ONLY FOR UNREAD EMAILS...
+                listRequest.Q = "is:unread"; //ONLY FOR UNREAD EMAILS...
+                //listRequest.Q = "in:inbox";
 
-                //GET ALL EMAILS
-                ListMessagesResponse listResponse = listRequest.Execute();
+                bool hasNext = true;
 
-                if (listResponse != null && listResponse != null)
+                while (hasNext)
                 {
-                    //LOOP THROUGH EACH EMAIL AND GET WHAT FILEDS I WANT
-                    foreach (Message msg in listResponse.Messages)
+                    //GET ALL EMAILS
+                    ListMessagesResponse listResponse = listRequest.Execute();
+                    hasNext = listResponse.NextPageToken != null;
+
+                    if (listResponse != null && listResponse.Messages != null)
                     {
-                        //MESSAGE MARKS AS READ AFTER READING MESSAGE
-                        GmailHelper.MsgMarkAsread(HostEmailAddress, msg.Id);
-
-                        UsersResource.MessagesResource.GetRequest message = gmailService.Users.Messages.Get(HostEmailAddress, msg.Id);
-                        Console.WriteLine("\n-----------------NEW MAIL-----------------");
-                        Console.WriteLine("STEP-1: Message ID: " + msg.Id);
-
-                        //MAKE ANOTHER REQUEST FOR THAT EMAIL ID...
-                        Message msgContent = message.Execute();
-
-                        if (msgContent != null)
+                        //LOOP THROUGH EACH EMAIL AND GET WHAT FILEDS I WANT
+                        foreach (Message msg in listResponse.Messages)
                         {
-                            string fromAddress = string.Empty;
-                            string date = string.Empty;
-                            string subject = string.Empty;
-                            string mailBody = string.Empty;
-                            string readableText = string.Empty;
+                            //MESSAGE MARKS AS READ AFTER READING MESSAGE
+                            GmailHelper.MsgMarkAsread(HostEmailAddress, msg.Id);
 
-                            //LOOP THROUGH THE HEADERS AND GET THE FIELDS WE NEED (SUBJECT, MAIL)
-                            foreach (var messageParts in msgContent.Payload.Headers)
+                            UsersResource.MessagesResource.GetRequest message = gmailService.Users.Messages.Get(HostEmailAddress, msg.Id);
+                            Console.WriteLine("\n-----------------NEW MAIL-----------------");
+                            Console.WriteLine("STEP-1: Message ID: " + msg.Id);
+
+                            //MAKE ANOTHER REQUEST FOR THAT EMAIL ID...
+                            Message msgContent = message.Execute();
+
+                            if (msgContent != null)
                             {
-                                if (messageParts.Name == "From")
-                                {
-                                    fromAddress = messageParts.Value;
-                                }
-                                else if (messageParts.Name == "Date")
-                                {
-                                    date = messageParts.Value;
-                                }
-                                else if (messageParts.Name == "Subject")
-                                {
-                                    subject = messageParts.Value;
-                                }
-                            }
+                                string fromAddress = string.Empty;
+                                string date = string.Empty;
+                                string subject = string.Empty;
+                                string mailBody = string.Empty;
+                                string readableText = string.Empty;
 
-                            //READ MAIL BODY
-                            Console.WriteLine("STEP-2: Read Mail Body");
-                            List<string> fileName = GmailHelper.GetAttachments(HostEmailAddress, msg.Id, Convert.ToString(ConfigurationManager.AppSettings["GmailAttach"]));
-
-                            if (fileName.Count() > 0)
-                            {
-                                foreach (var eachFile in fileName)
+                                //LOOP THROUGH THE HEADERS AND GET THE FIELDS WE NEED (SUBJECT, MAIL)
+                                foreach (var messageParts in msgContent.Payload.Headers)
                                 {
-                                    //GET SUER ID USING FROM EMAIL ADDRESS
-                                    string[] rectifyFromAddress = fromAddress.Split(' ');
-                                    string fromAdd = rectifyFromAddress[rectifyFromAddress.Length - 1];
-
-                                    if (!string.IsNullOrEmpty(fromAdd))
+                                    if (messageParts.Name == "From")
                                     {
-                                        fromAdd = fromAdd.Replace("<", string.Empty);
-                                        fromAdd = fromAdd.Replace(">", string.Empty);
+                                        fromAddress = messageParts.Value;
+                                    }
+                                    else if (messageParts.Name == "Date")
+                                    {
+                                        date = messageParts.Value;
+                                    }
+                                    else if (messageParts.Name == "Subject")
+                                    {
+                                        subject = messageParts.Value;
                                     }
                                 }
-                            }
-                            else
-                            {
-                                Console.WriteLine("STEP-3: Mail has no attatchments.");
-                            }
 
-                            //READ MAIL BODY
-                            mailBody = string.Empty;
-                            if (msgContent.Payload.Parts == null && msgContent.Payload.Body != null)
-                            {
-                                mailBody = msgContent.Payload.Body.Data;
-                            }
-                            else
-                            {
-                                mailBody = GmailHelper.MsgNestedParts(msgContent.Payload.Parts);
-                            }
+                                if (subject != "Inscrição")
+                                    continue;
 
-                            //BASE64 TO READABLE TEXT
-                            readableText = string.Empty;
-                            readableText = GmailHelper.Base64Decode(mailBody);
+                                #region GET ATTACHMENTS
 
-                            Console.WriteLine("STEP-4: Identify & Configure Mails.");
+                                //READ MAIL BODY
+                                //Console.WriteLine("STEP-2: Read Mail Body");
+                                //List<string> fileName = GmailHelper.GetAttachments(HostEmailAddress, msg.Id, Convert.ToString(ConfigurationManager.AppSettings["GmailAttach"]));
 
-                            if (!string.IsNullOrEmpty(readableText))
-                            {
-                                Gmail gmail = new Gmail();
-                                gmail.From = fromAddress;
-                                gmail.Body = readableText;
-                                gmail.MailDateTime = Convert.ToDateTime(date);
-                                emailList.Add(gmail);
+                                //if (fileName.Count() > 0)
+                                //{
+                                //    foreach (var eachFile in fileName)
+                                //    {
+                                //        //GET USER ID USING FROM EMAIL ADDRESS
+                                //        string[] rectifyFromAddress = fromAddress.Split(' ');
+                                //        string fromAdd = rectifyFromAddress[rectifyFromAddress.Length - 1];
+
+                                //        if (!string.IsNullOrEmpty(fromAdd))
+                                //        {
+                                //            fromAdd = fromAdd.Replace("<", string.Empty);
+                                //            fromAdd = fromAdd.Replace(">", string.Empty);
+                                //        }
+                                //    }
+                                //}
+                                //else
+                                //{
+                                //    Console.WriteLine("STEP-3: Mail has no attatchments.");
+                                //}
+
+                                #endregion
+
+                                //READ MAIL BODY
+                                mailBody = string.Empty;
+                                if (msgContent.Payload.Parts == null && msgContent.Payload.Body != null)
+                                {
+                                    mailBody = msgContent.Payload.Body.Data;
+                                }
+                                else
+                                {
+                                    mailBody = GmailHelper.MsgNestedParts(msgContent.Payload.Parts);
+                                }
+
+                                //BASE64 TO READABLE TEXT
+                                readableText = string.Empty;
+                                readableText = GmailHelper.Base64Decode(mailBody);
+
+                                Console.WriteLine("STEP-4: Identify & Configure Mails.");
+
+                                if (!string.IsNullOrEmpty(readableText))
+                                {
+                                    Gmail gmail = new Gmail();
+                                    gmail.From = fromAddress;
+                                    gmail.Body = readableText;
+                                    gmail.MailDateTime = Convert.ToDateTime(date).ToUniversalTime();
+                                    emailList.Add(gmail);
+
+                                    GmailHelper.SeparateBodyAndSaveToDB(gmail.Body, gmail.MailDateTime);
+                                }
                             }
                         }
-                    }                    
+                        if (hasNext)
+                            listRequest.PageToken = listResponse.NextPageToken;
+                    }
                 }
-                return emailList;
             }
             catch (Exception ex)
             {
-                throw new Exception("Error: " + ex.Message);
+                Console.WriteLine(ex.Message);
             }
+
+            return emailList;
         }
     }
 }
